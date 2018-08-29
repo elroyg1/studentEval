@@ -6,20 +6,8 @@ library(dplyr)
 library(stringr)
 library(DT)
 
-# Initialize Exam and Qtype tables for selection
-exams <- "1d_Qu2Aq9hVRheOnw0hisauXMJkT9RH0k5qMmpZs25_U" %>%
-  gs_key() %>%
-  gs_read(ws="Exam") %>%
-  select(Ename) %>%
-  unlist() %>%
-  unique()
+# Initialize Exam and Qtype tables for selecti
 
-qtypes <- "1d_Qu2Aq9hVRheOnw0hisauXMJkT9RH0k5qMmpZs25_U" %>%
-  gs_key() %>%
-  gs_read(ws="Type") %>%
-  select(Qtype) %>%
-  unlist() %>%
-  unique()
 
 # Define UI for application
 ui <- navbarPage(
@@ -80,10 +68,6 @@ ui <- navbarPage(
       tabPanel(
         "Examination",
         textInput(
-          "examid",
-          "Exam ID"
-        ),
-        textInput(
           "exam_name",
           "Exam Title"
         ),
@@ -113,15 +97,16 @@ ui <- navbarPage(
       
       tabPanel(
         "Question",
+        selectInput(
+          "equestions",
+          "Select the Exam",
+          choices = NULL
+        ),
         textInput(
           "qno",
           "Question Number"
         ),
-        selectInput(
-          "equestions",
-          "Select the Exam",
-          choices = c(exams)
-        ),
+        
         textInput(
           "q_name",
           "Question"
@@ -129,7 +114,7 @@ ui <- navbarPage(
         selectInput(
           "q_qtype",
           "Select Question Type",
-          choices = c(qtypes)
+          choices = NULL
         ),
         textInput(
           "total",
@@ -149,23 +134,21 @@ ui <- navbarPage(
         selectInput(
           "performance_exam",
           "Choose the exam",
-          choices = c(exams)
+          choices = NULL
+        ),
+        selectInput(
+          "performance_grade",
+          "Select the grade",
+          choices = c(7:11)
+        ),
+        dateInput(
+          "performance_date",
+          "Exam Date"
         ),
         actionButton("exam_select","Select")
       ),
       mainPanel(
-        textInput(
-          "performance_student",
-          "Enter the Student ID"),
-        textInput(
-          "performance_questions",
-          "Question"
-        ),
-        textInput(
-          "performance_score",
-          "Score"
-        ),
-        actionButton("performance","Submit")
+        DTOutput("scores")
       )
     )
   ),
@@ -179,7 +162,7 @@ ui <- navbarPage(
         selectInput(
           "exam_choice",
           "Choose the Exam",
-          choices = c(exams)
+          choices = NULL
         ),
         actionButton("display","Display")
       ),
@@ -192,7 +175,7 @@ ui <- navbarPage(
 )
 
 # Define server logic
-server <- function(input, output) {
+server <- function(input, output, session) {
   
   hideTab(inputId = "tabs",
           target = "Report"
@@ -208,6 +191,27 @@ server <- function(input, output) {
           )
   hideTab(inputId = "tabs",
           target = "Results")
+  
+  exams <- reactive({
+    invalidateLater(100)
+    exams <- "1d_Qu2Aq9hVRheOnw0hisauXMJkT9RH0k5qMmpZs25_U" %>%
+      gs_key() %>%
+      gs_read(ws="Exam") %>%
+      select(Ename) %>%
+      unlist() %>%
+      unique()
+    return(exams)
+  })
+  qtypes <- reactive({
+    invalidateLater(100)
+    qtypes<-"1d_Qu2Aq9hVRheOnw0hisauXMJkT9RH0k5qMmpZs25_U" %>%
+      gs_key() %>%
+      gs_read(ws="Type") %>%
+      select(Qtype) %>%
+      unlist() %>%
+      unique()
+    return(qtypes)
+  })
   
   # Login
   observeEvent(input$login_submit,{
@@ -235,6 +239,26 @@ server <- function(input, output) {
     } else {
       output$error <- renderText({"Email/Password incorrect. Please try again."})
     }
+    updateSelectInput(
+      session = session,
+      inputId = "equestions",
+      choices = exams()
+    )
+    updateSelectInput(
+      session,
+      inputId = "performance_exam",
+      choices = exams()
+    )
+    updateSelectInput(
+      session,
+      inputId = "exam_choice",
+      choices = exams()
+    )
+    updateSelectInput(
+      session,
+      inputId = "q_qtype",
+      choices = qtypes()
+    )
   })
   
   # Student Update
@@ -257,11 +281,28 @@ server <- function(input, output) {
     "1d_Qu2Aq9hVRheOnw0hisauXMJkT9RH0k5qMmpZs25_U" %>%
       gs_key() %>%
       gs_add_row(ws="Exam",
-                 input = c(input$examid,
+                 input = c(paste0(input$exam_name,
+                                  input$exam_date,
+                                  input$exam_grade),
                            input$exam_name,
                            input$exam_date,
                            input$exam_grade))
-    reset(input$examid)
+    updateSelectInput(
+      session = session,
+      inputId = "equestions",
+      choices = exams()
+    )
+    updateSelectInput(
+      session,
+      inputId = "performance_exam",
+      choices = exams()
+    )
+    updateSelectInput(
+      session,
+      inputId = "exam_choice",
+      choices = exams()
+    )
+
     reset(input$exam_name)
     reset(input$exam_date)
     reset(input$exam_grade)
@@ -274,6 +315,11 @@ server <- function(input, output) {
       gs_add_row(ws="Type",
                  input = c(input$qtypeid,
                            input$qtype))
+    updateSelectInput(
+      session,
+      inputId = "q_qtype",
+      choices = qtypes()
+    )
     reset(input$qtypeid)
     reset(input$qtype)
   })
@@ -296,18 +342,61 @@ server <- function(input, output) {
     reset(input$total)
   })
   
-  observeEvent(input$performance,{
-    "1d_Qu2Aq9hVRheOnw0hisauXMJkT9RH0k5qMmpZs25_U" %>%
+  # Enter scores of students
+  observeEvent(input$exam_select,{
+    
+    examID <- paste0(input$performance_exam,
+                    input$performance_date,
+                    input$performance_grade)
+    
+    examID
+    
+    exams <- "1d_Qu2Aq9hVRheOnw0hisauXMJkT9RH0k5qMmpZs25_U" %>%
       gs_key() %>%
-      gs_add_row(ws="Performance",
-                 input = c(input$performance_exam,
-                           input$performance_student,
-                           paste0(input$performance_exam,
-                                  input$performance_questions),
-                           input$performance_score))
-    reset(input$performance_student)
-    reset(input$performance_questions)
-    reset(input$performance_score)
+      gs_read(ws="Exam") %>%
+      filter(ExamID == examID)
+    students <-"1d_Qu2Aq9hVRheOnw0hisauXMJkT9RH0k5qMmpZs25_U" %>%
+      gs_key() %>%
+      gs_read(ws="Student")%>%
+      filter(Grade ==input$performance_grade)
+    questions <- "1d_Qu2Aq9hVRheOnw0hisauXMJkT9RH0k5qMmpZs25_U" %>%
+      gs_key() %>%
+      gs_read(ws="Question")
+    
+    entrytable <- exams %>%
+      left_join(students, by="Grade") %>%
+      left_join(questions, by= "Ename")%>%
+      select(StudentID, QuesNO) %>%
+      mutate(Score = 0) %>%
+      tidyr::spread(QuesNO, Score)
+    
+    output$scores <-  renderDT(entrytable,
+                               selection="none",
+                               editable=T)
+    
+    proxy <- dataTableProxy("scores")
+    
+    observeEvent(input$scores_cell_edit,{
+      info <- input$scores_cell_edit
+      i <- info$row
+      j <- info$col
+      v <- info$value
+      
+      entrytable[i,j] <- coerceValue(v, entrytable[i,j])
+      
+      replaceData(proxy, entrytable, resetPaging = F)
+      
+      "1d_Qu2Aq9hVRheOnw0hisauXMJkT9RH0k5qMmpZs25_U" %>%
+        gs_key() %>%
+        gs_add_row(ws="Performance",
+                   input = c(examID,
+                             input$performance_exam,
+                             entrytable$StudentID[i],
+                             paste0(input$equestions, names(entrytable[j])),
+                             names(entrytable[j]),
+                             v))
+
+    })
     
   })
   
@@ -324,7 +413,8 @@ server <- function(input, output) {
         gs_read(ws="Question") %>%
         select(QuesID,Qname,QType,QTotal)
       report <- performance %>%
-        left_join(questype,by =c("Question"="QuesID"))
+        left_join(questype,by ="QuesID") %>%
+        unique()
       return(report)
     })
     
