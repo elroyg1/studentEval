@@ -167,8 +167,29 @@ ui <- navbarPage(
         actionButton("display","Display")
       ),
       mainPanel(
-        fluidRow(DT::dataTableOutput("report"),
-                 actionButton("refresh", "Refresh"))
+        tabsetPanel(
+          tabPanel("Table",
+                   h3("Test performance data"),
+                   DT::dataTableOutput("report")),
+          tabPanel("Student",
+                   selectInput(
+                     "result_student",
+                     "Select the student ID",
+                     choices = NULL),
+                   actionButton("result_student_select","Select"),
+                   br(),
+                   h3("Student overall grade (%)"),
+                   textOutput("student_total_report"),
+                   br(),
+                   h3("Student performance on each question"), 
+                   DT::dataTableOutput("student_quest_report"),
+                   br(),
+                   h3("Student performance on each question type"),
+                   DT::dataTableOutput("student_type_report")),
+          tabPanel("Question Type",
+                   h3("Overall test performance by question type"),
+                   DT::dataTableOutput("type_report"))
+          )
       )
     )
   )
@@ -418,8 +439,13 @@ server <- function(input, output, session) {
       return(report)
     })
     
-    input$refresh
+    updateSelectInput(
+      session,
+      inputId = "result_student",
+      choices = report_table()$Student
+    )
     
+    # Overall report
     output$report <- renderDataTable({
       
       report_table() %>%
@@ -428,6 +454,88 @@ server <- function(input, output, session) {
                Type = QType,
                Total = QTotal,
                `Student Score` = Score) %>%
+        mutate(Percentage = round((`Student Score`/Total)*100,2))%>%
+        datatable(
+          rownames = F,
+          extensions = "Buttons",
+          options = list(
+            dom = "Bfrtip",
+            buttons = c("excel", "pdf","print")
+          )
+        )
+      
+    })
+    
+    # Student Report
+    observeEvent(input$result_student_select,{
+      
+      output$student_total_report <- renderText({
+        report_table() %>%
+          select(Student,Qname,QTotal,Score) %>%
+          group_by(Student) %>%
+          summarise(FinalScore = round((sum(Score)/sum(QTotal))*100,2)) %>%
+          ungroup() %>%
+          filter(Student == input$result_student) %>%
+          select(FinalScore) %>%
+          unlist()
+      })
+      output$student_quest_report <- renderDataTable({
+        
+        report_table() %>%
+          select(Student,Qname,QTotal,Score) %>%
+          rename(Question = Qname,
+                 Total = QTotal,
+                 `Student Score` = Score) %>%
+          mutate(Percentage = round((`Student Score`/Total)*100,2)) %>%
+          filter(Student == input$result_student) %>%
+          select(-Student) %>%
+          datatable(
+            rownames = F,
+            extensions = "Buttons",
+            options = list(
+              dom = "Bfrtip",
+              buttons = c("excel", "pdf","print")
+            )
+          )
+        
+      })
+      output$student_type_report <-renderDataTable({
+        
+        report_table() %>%
+          select(Student,Qname,QType,QTotal,Score) %>%
+          rename(Type = QType,
+                 Total = QTotal,
+                 `Student Score` = Score) %>%
+          mutate(Percentage = round((`Student Score`/Total)*100,2))%>%
+          filter(Student == input$result_student) %>%
+          group_by(Type) %>%
+          summarise(`Average Score` = round(mean(Percentage, na.rm = T),2))%>%
+          ungroup()%>%
+          datatable(
+            rownames = F,
+            extensions = "Buttons",
+            options = list(
+              dom = "Bfrtip",
+              buttons = c("excel", "pdf","print")
+            )
+          )
+        
+      })
+      
+    })
+    
+    # Question Type Report
+    output$type_report <- renderDataTable({
+      
+      report_table() %>%
+        select(Student,Qname,QType,QTotal,Score) %>%
+        rename(Type = QType,
+               Total = QTotal,
+               `Student Score` = Score) %>%
+        mutate(Percentage = round((`Student Score`/Total)*100,2))%>%
+        group_by(Type) %>%
+        summarise(`Average Score` = round(mean(Percentage, na.rm = T),2))%>%
+        ungroup()%>%
         datatable(
           rownames = F,
           extensions = "Buttons",
