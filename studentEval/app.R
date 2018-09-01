@@ -169,7 +169,7 @@ ui <- navbarPage(
       mainPanel(
         tabsetPanel(
           tabPanel("Table",
-                   h3("Test performance data"),
+                   h4("Test performance data"),
                    DT::dataTableOutput("report")),
           tabPanel("Student",
                    selectInput(
@@ -178,16 +178,19 @@ ui <- navbarPage(
                      choices = NULL),
                    actionButton("result_student_select","Select"),
                    br(),
-                   h3("Student overall grade (%)"),
+                   h4("Student overall grade (%)"),
                    textOutput("student_total_report"),
                    br(),
-                   h3("Student performance on each question"), 
+                   h4("Student performance on each question"), 
                    DT::dataTableOutput("student_quest_report"),
                    br(),
-                   h3("Student performance on each question type"),
+                   h4("Student performance on each question type"),
                    DT::dataTableOutput("student_type_report")),
+          tabPanel("Question",
+                   h4("Overall test performance by question"),
+                   DT::dataTableOutput("question_report")),
           tabPanel("Question Type",
-                   h3("Overall test performance by question type"),
+                   h4("Overall test performance by question type"),
                    DT::dataTableOutput("type_report"))
           )
       )
@@ -524,7 +527,30 @@ server <- function(input, output, session) {
       
     })
     
-    # Question Type Report
+    # Overall Question Report
+    output$question_report <-renderDataTable({
+      
+      report_table() %>%
+        select(Student,Qname,QType,QTotal,Score) %>%
+        rename(Question = Qname,
+               Total = QTotal,
+               `Student Score` = Score) %>%
+        mutate(Percentage = round((`Student Score`/Total)*100,2)) %>%
+        group_by(Question) %>%
+        summarise(`Average Score` = round(mean(Percentage, na.rm = T),2))%>%
+        ungroup()%>%
+        datatable(
+          rownames = F,
+          extensions = "Buttons",
+          options = list(
+            dom = "Bfrtip",
+            buttons = c("excel", "pdf","print")
+          )
+        )
+      
+    })
+    
+    # Overall Question Type Report
     output$type_report <- renderDataTable({
       
       report_table() %>%
